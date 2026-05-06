@@ -4,6 +4,7 @@ import { seedDb } from "./seed";
 import type { Comment, Report, ReviewDecision, VisionEchoDb } from "./types";
 
 const dbPath = path.join(process.cwd(), "data", "visionecho-db.json");
+const isServerlessRuntime = Boolean(process.env.VERCEL);
 
 let memoryDb: VisionEchoDb | null = null;
 
@@ -13,6 +14,11 @@ function clone<T>(value: T): T {
 
 async function ensureDb() {
   if (memoryDb) return memoryDb;
+
+  if (isServerlessRuntime) {
+    memoryDb = clone(seedDb);
+    return memoryDb;
+  }
 
   try {
     const file = await readFile(dbPath, "utf8");
@@ -26,6 +32,8 @@ async function ensureDb() {
 }
 
 async function persistDb(db: VisionEchoDb) {
+  if (isServerlessRuntime) return;
+
   await mkdir(path.dirname(dbPath), { recursive: true });
   await writeFile(dbPath, JSON.stringify(db, null, 2), "utf8");
 }
