@@ -12,12 +12,5 @@ export default async function CategoryPage({ params }: PageProps) {
 
   if (!db.categories.some((category) => category.slug === slug)) notFound();
 
-  return (
-    <VisionEchoApp
-      initialCategories={db.categories}
-      initialReporters={db.reporters}
-      initialReports={reports}
-      initialCategory={slug}
-    />
-  );
+  return <VisionEchoApp initialCategories={db.categories} initialReporters={db.reporters} initialReports={reports} initialCategory={slug} />;
 }

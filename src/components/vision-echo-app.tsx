@@ -84,7 +84,6 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
   const [dark, setDark] = useState(false);
   const [toast, setToast] = useState("");
   const [mediaPreview, setMediaPreview] = useState<{ type: MediaType; url: string; name?: string } | null>(null);
-  const [authMode, setAuthMode] = useState<"login" | "signup">("signup");
   const [liveOpen, setLiveOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -149,24 +148,6 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
     const reporterResponse = await fetch("/api/reporters", { cache: "no-store" });
     const reporterData = (await reporterResponse.json()) as { reporters: ReporterProfile[] };
     setReporters(reporterData.reporters);
-  }
-
-  async function submitAuth(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const endpoint = authMode === "signup" ? "/api/auth/signup" : "/api/auth/login";
-    const body =
-      authMode === "signup"
-        ? { name: String(form.get("name") ?? ""), email: String(form.get("email") ?? ""), password: String(form.get("password") ?? "") }
-        : { email: String(form.get("email") ?? ""), password: String(form.get("password") ?? "") };
-    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    if (!response.ok) {
-      flash(authMode === "signup" ? "Could not create account" : "Login failed");
-      return;
-    }
-    event.currentTarget.reset();
-    await refreshSession();
-    flash(authMode === "signup" ? "Account created" : "Welcome back");
   }
 
   async function logout() {
@@ -408,6 +389,7 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
           <a href="#submit">Submit</a>
           <a href="#editor">Editor Desk</a>
           <a href="#profiles">Profiles</a>
+          <a href="/">Story</a>
         </nav>
 
         <div className="top-actions">
@@ -439,47 +421,6 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
             <StatusMetric value={queueCount} label="In review" />
             <StatusMetric value={stateCount} label="States covered" />
           </div>
-        </section>
-
-        <section className="account-band" aria-label="Account and access">
-          <Panel title={currentUser ? "Account" : authMode === "signup" ? "Create Account" : "Login"}>
-            {currentUser ? (
-              <div className="account-summary">
-                <div>
-                  <strong>{currentUser.name}</strong>
-                  <span>{currentUser.email}</span>
-                </div>
-                <div className="evidence-row">
-                  <Pill icon={<UserRound />} text={currentUser.role} variant={currentUser.role === "admin" || currentUser.role === "editor" ? "verified" : "review"} />
-                  <Pill icon={<BadgeCheck />} text={`KYC: ${currentUser.kycStatus}`} variant={currentUser.reporterVerified ? "verified" : "review"} />
-                </div>
-                <button className="ghost-button" type="button" onClick={logout}>Sign out</button>
-              </div>
-            ) : (
-              <form className="auth-form" onSubmit={submitAuth}>
-                {authMode === "signup" ? (
-                  <label>
-                    Full name
-                    <input name="name" required placeholder="Your legal or newsroom name" />
-                  </label>
-                ) : null}
-                <label>
-                  Email
-                  <input name="email" type="email" required placeholder="you@example.com" />
-                </label>
-                <label>
-                  Password
-                  <input name="password" type="password" required minLength={8} placeholder="Minimum 8 characters" />
-                </label>
-                <div className="auth-actions">
-                  <button className="primary-button" type="submit">{authMode === "signup" ? "Create account" : "Login"}</button>
-                  <button className="ghost-button" type="button" onClick={() => setAuthMode(authMode === "signup" ? "login" : "signup")}>
-                    {authMode === "signup" ? "I already have an account" : "Create a new account"}
-                  </button>
-                </div>
-              </form>
-            )}
-          </Panel>
         </section>
 
         <section className="workspace-grid">
@@ -567,6 +508,27 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
           </section>
 
           <aside className="right-rail">
+            <Panel eyebrow="Session" title={currentUser ? "Your Access" : "Access Required"} icon={<UserRound />}>
+              {currentUser ? (
+                <div className="account-summary">
+                  <div>
+                    <strong>{currentUser.name}</strong>
+                    <span>{currentUser.email}</span>
+                  </div>
+                  <div className="evidence-row">
+                    <Pill icon={<UserRound />} text={currentUser.role} variant={currentUser.role === "admin" || currentUser.role === "editor" ? "verified" : "review"} />
+                    <Pill icon={<BadgeCheck />} text={`KYC: ${currentUser.kycStatus}`} variant={currentUser.reporterVerified ? "verified" : "review"} />
+                  </div>
+                  <button className="ghost-button" type="button" onClick={logout}>Sign out</button>
+                </div>
+              ) : (
+                <div className="empty-state">
+                  Login from the landing page to submit reports, complete KYC, comment, or use the editor desk.
+                  <a className="primary-button wide inline-dashboard-link" href="/#access">Login or create account</a>
+                </div>
+              )}
+            </Panel>
+
             <Panel id="submit" eyebrow="Eyewitness desk" title="Post Report" icon={<UploadCloud />}>
               <form className="report-form" onSubmit={submitReport}>
                 <label>

@@ -1,8 +1,5 @@
-import { getDb, listReports } from "@/lib/db";
-import { VisionEchoApp } from "@/components/vision-echo-app";
+import { LandingPage } from "@/components/landing-page";
 
 export default async function Home() {
-  const [db, reports] = await Promise.all([getDb(), listReports()]);
-
-  return <VisionEchoApp initialCategories={db.categories} initialReporters={db.reporters} initialReports={reports} />;
+  return <LandingPage />;
 }
