@@ -1,0 +1,8 @@
+.next/
+node_modules/
+data/visionecho-db.json
+*.log
+*.tsbuildinfo
+.env
+.env.local
+.vercel/

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VisionEcho Live icon">
+  <rect width="512" height="512" rx="96" fill="#0e7a56"/>
+  <path d="M120 160h54l52 160 52-160h54l-78 220h-56L120 160Z" fill="#fff"/>
+  <path d="M338 160h54v220h-54V160Z" fill="#e7b12c"/>
+  <circle cx="365" cy="119" r="26" fill="#e7b12c"/>
+</svg>

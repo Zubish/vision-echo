@@ -1,0 +1,34 @@
+{
+  "name": "VisionEcho Live",
+  "short_name": "VisionEcho",
+  "description": "Live Nigerian civic news, eyewitness reports, and editor verification.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f7f2",
+  "theme_color": "#0e7a56",
+  "orientation": "portrait-primary",
+  "categories": ["news", "social", "productivity"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Submit report",
+      "short_name": "Submit",
+      "url": "/#submit",
+      "description": "Post a new eyewitness or reporter update"
+    },
+    {
+      "name": "Editor queue",
+      "short_name": "Verify",
+      "url": "/#editor",
+      "description": "Review reports waiting for verification"
+    }
+  ]
+}

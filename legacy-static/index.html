@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VisionEcho Live</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="VisionEcho Live home">
+          <span class="brand-mark">VE</span>
+          <span>
+            <strong>VisionEcho</strong>
+            <small>Live</small>
+          </span>
+        </a>
+
+        <nav class="topnav" aria-label="Primary">
+          <a href="#feed">Live Feed</a>
+          <a href="#submit">Submit</a>
+          <a href="#editor">Editor Desk</a>
+          <a href="#profiles">Profiles</a>
+        </nav>
+
+        <div class="top-actions">
+          <button class="icon-button" id="themeToggle" type="button" aria-label="Toggle theme" title="Toggle theme">
+            <i data-lucide="moon"></i>
+          </button>
+          <button class="primary-button" type="button" data-scroll-target="submit">
+            <i data-lucide="radio"></i>
+            Go Live
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <section class="command-band" aria-labelledby="dashboardTitle">
+          <div class="command-copy">
+            <p class="eyebrow">Civic signal room</p>
+            <h1 id="dashboardTitle">VisionEcho Live</h1>
+            <p>
+              Field reports, reporter stories, and editor-verified civic updates moving across Nigeria
+              in real time.
+            </p>
+          </div>
+
+          <div class="signal-grid" aria-label="Live newsroom status">
+            <article>
+              <span id="liveCount">0</span>
+              <small>Live reports</small>
+            </article>
+            <article>
+              <span id="verifiedCount">0</span>
+              <small>Verified</small>
+            </article>
+            <article>
+              <span id="queueCount">0</span>
+              <small>In review</small>
+            </article>
+            <article>
+              <span>36</span>
+              <small>States covered</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="workspace-grid">
+          <aside class="sidebar" aria-label="News controls">
+            <div class="panel compact">
+              <div class="panel-title-row">
+                <h2>Categories</h2>
+                <button class="ghost-button tiny" id="clearFilters" type="button">Clear</button>
+              </div>
+              <div class="category-list" id="categoryList"></div>
+            </div>
+
+            <div class="panel compact">
+              <div class="panel-title-row">
+                <h2>Verification</h2>
+              </div>
+              <div class="status-list" id="statusList"></div>
+            </div>
+
+            <div class="panel compact">
+              <div class="panel-title-row">
+                <h2>Field Map</h2>
+              </div>
+              <div class="mini-map" aria-label="Nigeria field report map">
+                <span class="map-pin lagos" title="Lagos"></span>
+                <span class="map-pin abuja" title="Abuja"></span>
+                <span class="map-pin kano" title="Kano"></span>
+                <span class="map-pin rivers" title="Rivers"></span>
+              </div>
+              <div class="map-legend">
+                <span><b></b> Eyewitness</span>
+                <span><b></b> Reporter</span>
+              </div>
+            </div>
+          </aside>
+
+          <section class="feed-column" id="feed" aria-labelledby="feedTitle">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Now tracking</p>
+                <h2 id="feedTitle">Live Feed</h2>
+              </div>
+              <label class="search-box">
+                <i data-lucide="search"></i>
+                <input id="searchInput" type="search" placeholder="Search reports, places, reporters" />
+              </label>
+            </div>
+
+            <div class="category-page" id="categoryPage"></div>
+            <div class="feed-list" id="feedList"></div>
+          </section>
+
+          <aside class="right-rail">
+            <section class="panel submit-panel" id="submit" aria-labelledby="submitTitle">
+              <div class="panel-title-row">
+                <div>
+                  <p class="eyebrow">Eyewitness desk</p>
+                  <h2 id="submitTitle">Post Report</h2>
+                </div>
+                <i data-lucide="upload-cloud"></i>
+              </div>
+
+              <form id="reportForm" class="report-form">
+                <label>
+                  Title
+                  <input name="title" required maxlength="90" placeholder="What is happening?" />
+                </label>
+                <label>
+                  Category
+                  <select name="category" required></select>
+                </label>
+                <label>
+                  Location
+                  <div class="location-row">
+                    <input name="location" required placeholder="City, state" />
+                    <button class="icon-button" id="locationButton" type="button" aria-label="Use current location" title="Use current location">
+                      <i data-lucide="map-pin"></i>
+                    </button>
+                  </div>
+                </label>
+                <label>
+                  Report
+                  <textarea name="body" required rows="4" placeholder="Add what you saw, who was present, and what can be verified."></textarea>
+                </label>
+                <label>
+                  Media
+                  <input name="media" type="file" accept="image/*,video/*,audio/*" />
+                </label>
+                <div class="media-preview" id="mediaPreview">No media selected</div>
+
+                <label class="checkbox-row">
+                  <input name="asReporter" type="checkbox" />
+                  Submit as reporter story
+                </label>
+                <button class="primary-button wide" type="submit">
+                  <i data-lucide="send"></i>
+                  Submit for Review
+                </button>
+              </form>
+            </section>
+
+            <section class="panel editor-panel" id="editor" aria-labelledby="editorTitle">
+              <div class="panel-title-row">
+                <div>
+                  <p class="eyebrow">Verification desk</p>
+                  <h2 id="editorTitle">Editor Queue</h2>
+                </div>
+                <i data-lucide="shield-check"></i>
+              </div>
+              <div class="queue-list" id="queueList"></div>
+            </section>
+
+            <section class="panel" id="profiles" aria-labelledby="profilesTitle">
+              <div class="panel-title-row">
+                <div>
+                  <p class="eyebrow">Network</p>
+                  <h2 id="profilesTitle">Reporter Profiles</h2>
+                </div>
+                <i data-lucide="users"></i>
+              </div>
+              <div class="profile-list" id="profileList"></div>
+            </section>
+          </aside>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <span>VisionEcho Live prototype</span>
+        <span>Images credited in README</span>
+      </footer>
+    </div>
+
+    <template id="reportTemplate">
+      <article class="report-card">
+        <div class="media-shell"></div>
+        <div class="report-content">
+          <div class="report-meta"></div>
+          <h3></h3>
+          <p class="report-body"></p>
+          <div class="evidence-row"></div>
+          <div class="action-row"></div>
+          <div class="comments"></div>
+        </div>
+      </article>
+    </template>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
