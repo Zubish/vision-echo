@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { canEdit, getCurrentUser } from "@/lib/auth";
 import { reviewReport } from "@/lib/db";
 import { reviewInputSchema } from "@/lib/validation";
 
@@ -7,6 +8,9 @@ type RouteContext = {
 };
 
 export async function POST(request: NextRequest, context: RouteContext) {
+  const user = await getCurrentUser();
+  if (!canEdit(user)) return NextResponse.json({ error: "Editor access required" }, { status: 403 });
+
   const { id } = await context.params;
   const parsed = reviewInputSchema.safeParse(await request.json().catch(() => ({})));
 

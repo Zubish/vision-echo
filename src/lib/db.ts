@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { seedDb } from "./seed";
-import type { Comment, Report, ReviewDecision, VisionEchoDb } from "./types";
+import type { Comment, KycStatus, KycSubmission, Report, ReviewDecision, User, UserRole, VisionEchoDb } from "./types";
 
 const dbPath = path.join(process.cwd(), "data", "visionecho-db.json");
 const isServerlessRuntime = Boolean(process.env.VERCEL);
@@ -23,6 +23,10 @@ async function ensureDb() {
   try {
     const file = await readFile(dbPath, "utf8");
     memoryDb = JSON.parse(file) as VisionEchoDb;
+    memoryDb.users ??= [];
+    memoryDb.kycSubmissions ??= [];
+    memoryDb.reporters ??= [];
+    memoryDb.reports ??= [];
   } catch {
     memoryDb = clone(seedDb);
     await persistDb(memoryDb);
@@ -70,6 +74,111 @@ export async function listReports(filters?: {
       return `${report.title} ${report.body} ${report.locationName} ${report.authorName}`.toLowerCase().includes(q);
     })
     .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+}
+
+export async function getUserById(userId: string) {
+  const db = await getDb();
+  return db.users.find((user) => user.id === userId) ?? null;
+}
+
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  return db.users.find((user) => user.email.toLowerCase() === email.toLowerCase()) ?? null;
+}
+
+export async function createUser(input: Pick<User, "name" | "email" | "passwordHash">) {
+  let created: User | null = null;
+  await saveDb((db) => {
+    if (db.users.some((user) => user.email.toLowerCase() === input.email.toLowerCase())) {
+      throw new Error("Email already registered");
+    }
+
+    const now = new Date().toISOString();
+    const isFirstUser = db.users.length === 0;
+    created = {
+      id: `user-${Date.now()}`,
+      name: input.name,
+      email: input.email.toLowerCase(),
+      passwordHash: input.passwordHash,
+      role: isFirstUser ? "admin" : "user",
+      status: "active",
+      kycStatus: "not_started",
+      reporterVerified: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    db.users.push(created);
+  });
+  if (!created) throw new Error("User could not be created");
+  return created as User;
+}
+
+export async function listUsers() {
+  const db = await getDb();
+  return db.users.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+}
+
+export async function updateUserRole(userId: string, role: UserRole) {
+  let updated: User | null = null;
+  await saveDb((db) => {
+    const user = db.users.find((item) => item.id === userId);
+    if (!user) throw new Error("User not found");
+    user.role = role;
+    user.updatedAt = new Date().toISOString();
+    if (role === "reporter" && user.kycStatus !== "approved") {
+      user.reporterVerified = false;
+    }
+    updated = user;
+  });
+  return updated;
+}
+
+export async function submitKyc(userId: string, input: Omit<KycSubmission, "id" | "userId" | "status" | "createdAt" | "updatedAt">) {
+  let submission: KycSubmission | null = null;
+  await saveDb((db) => {
+    const now = new Date().toISOString();
+    const user = db.users.find((item) => item.id === userId);
+    if (!user) throw new Error("User not found");
+
+    submission = {
+      ...input,
+      id: `kyc-${Date.now()}`,
+      userId,
+      status: "pending",
+      createdAt: now,
+      updatedAt: now,
+    };
+    db.kycSubmissions = db.kycSubmissions.filter((item) => item.userId !== userId || item.status !== "pending");
+    db.kycSubmissions.unshift(submission);
+    user.kycStatus = "pending";
+    user.updatedAt = now;
+  });
+  return submission;
+}
+
+export async function reviewKyc(submissionId: string, status: Extract<KycStatus, "approved" | "rejected">, reviewerNote?: string) {
+  let updated: KycSubmission | null = null;
+  await saveDb((db) => {
+    const submission = db.kycSubmissions.find((item) => item.id === submissionId);
+    if (!submission) throw new Error("KYC not found");
+    const user = db.users.find((item) => item.id === submission.userId);
+    if (!user) throw new Error("User not found");
+
+    submission.status = status;
+    submission.reviewerNote = reviewerNote;
+    submission.updatedAt = new Date().toISOString();
+    user.kycStatus = status;
+    user.reporterVerified = status === "approved";
+    if (status === "approved") user.role = "reporter";
+    user.updatedAt = submission.updatedAt;
+    updated = submission;
+  });
+  return updated;
+}
+
+export async function listKycSubmissions() {
+  const db = await getDb();
+  return db.kycSubmissions.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
 }
 
 export async function getReport(idOrSlug: string) {

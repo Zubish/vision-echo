@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth";
 import { addComment, getReport } from "@/lib/db";
 import { commentInputSchema } from "@/lib/validation";
 
@@ -18,8 +19,11 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "Login required" }, { status: 401 });
+
   const { id } = await context.params;
-  const parsed = commentInputSchema.safeParse(await request.json());
+  const parsed = commentInputSchema.safeParse({ ...(await request.json()), name: user.name });
 
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid comment", details: parsed.error.flatten() }, { status: 400 });

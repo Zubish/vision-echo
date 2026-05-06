@@ -286,6 +286,10 @@ h1 {
   line-height: 1.65;
 }
 
+.hero-live-button {
+  margin-top: 1rem;
+}
+
 .signal-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -320,6 +324,53 @@ h1 {
   grid-template-columns: 260px minmax(0, 1fr) 360px;
   gap: 1rem;
   align-items: start;
+}
+
+.account-band {
+  margin-bottom: 1rem;
+}
+
+.auth-form,
+.account-summary {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 0.9rem;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.auth-form input {
+  width: 100%;
+  min-height: 2.45rem;
+  padding: 0.62rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  outline: none;
+}
+
+.auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.account-summary strong,
+.account-summary span {
+  display: block;
+}
+
+.account-summary span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
 }
 
 .sidebar,
@@ -802,6 +853,13 @@ h1 {
   font-weight: 800;
 }
 
+.form-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .media-preview img,
 .media-preview video {
   width: 100%;
@@ -979,6 +1037,35 @@ h1 {
   color: var(--surface);
   font-weight: 800;
   box-shadow: var(--shadow);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.56);
+}
+
+.live-modal {
+  width: min(680px, 100%);
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.live-preview {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  margin: 1rem 0;
+  border-radius: var(--radius);
+  background: #050505;
+  object-fit: cover;
 }
 
 .loading-screen,

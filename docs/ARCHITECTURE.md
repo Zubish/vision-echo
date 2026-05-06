@@ -7,6 +7,7 @@ VisionEcho Live is now a Next.js App Router product build.
 - Frontend: Next.js, React, TypeScript, global CSS ported from the approved prototype
 - Backend: Next.js Route Handlers under `src/app/api`
 - Database adapter: local JSON persistence in `data/visionecho-db.json` for rapid shipping
+- Auth: signed HTTP-only cookie sessions, password hashing with Node crypto
 - Validation: Zod request schemas
 - Mobile web: PWA manifest, service worker, responsive layout, mobile bottom dock
 
@@ -28,6 +29,13 @@ VisionEcho Live is now a Next.js App Router product build.
 - `POST /api/editor/reports/:id/reject`
 - `GET /api/categories`
 - `GET /api/reporters`
+- `POST /api/auth/signup`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+- `POST /api/kyc`
+- `PATCH /api/admin/kyc/:id`
+- `PATCH /api/admin/users/:id/role`
 
 ## Production Upgrade Path
 
@@ -35,7 +43,8 @@ The current file-backed adapter is intentionally isolated in `src/lib/db.ts`. Re
 
 Launch blockers before public production:
 
-- Auth and role-based access control for eyewitnesses, reporters, editors, and admins
+- Hosted database persistence for Vercel production
+- Strong `AUTH_SECRET` in production
 - Signed object storage for image, video, and audio uploads
 - Media scanning and content moderation
 - Rate limiting for submissions, comments, login, and editor routes

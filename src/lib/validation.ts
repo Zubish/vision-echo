@@ -9,6 +9,7 @@ export const reportInputSchema = z.object({
   latitude: z.number().optional(),
   longitude: z.number().optional(),
   sourceType: z.enum(["Eyewitness", "Reporter"]),
+  authorId: z.string().optional(),
   authorName: z.string().min(2).max(100),
   reporterId: z.string().optional(),
   live: z.boolean().default(true),
@@ -35,6 +36,36 @@ export const reportInputSchema = z.object({
     )
     .default([]),
   status: z.enum(["submitted", "in_review", "needs_more_info", "verified", "rejected", "archived", "flagged"]).default("in_review"),
+});
+
+export const signupSchema = z.object({
+  name: z.string().min(2).max(100),
+  email: z.string().email().max(180),
+  password: z.string().min(8).max(120),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+export const roleUpdateSchema = z.object({
+  role: z.enum(["user", "reporter", "editor", "admin"]),
+});
+
+export const kycInputSchema = z.object({
+  fullName: z.string().min(2).max(120),
+  phone: z.string().min(6).max(40),
+  location: z.string().min(2).max(120),
+  beat: z.string().min(2).max(120),
+  experience: z.string().min(20).max(1500),
+  idType: z.string().min(2).max(80),
+  idNumber: z.string().min(3).max(120),
+});
+
+export const kycReviewSchema = z.object({
+  status: z.enum(["approved", "rejected"]),
+  reviewerNote: z.string().max(500).optional(),
 });
 
 export const commentInputSchema = z.object({

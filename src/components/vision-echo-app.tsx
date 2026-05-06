@@ -3,6 +3,7 @@
 import {
   BadgeCheck,
   Building2,
+  Camera,
   CheckCircle2,
   Construction,
   Eye,
@@ -22,15 +23,15 @@ import {
   Share2,
   ShieldAlert,
   ShieldCheck,
+  StopCircle,
   Sun,
   Timer,
   UploadCloud,
   UserRound,
   Users,
-  XCircle,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { Category, MediaType, Report, ReporterProfile, ReportStatus } from "@/lib/types";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import type { Category, KycSubmission, MediaType, PublicUser, Report, ReporterProfile, ReportStatus, UserRole } from "@/lib/types";
 
 type AppProps = {
   initialCategories: Category[];
@@ -72,13 +73,24 @@ function formatTime(value: string) {
 export function VisionEchoApp({ initialCategories, initialReporters, initialReports, initialCategory = "all" }: AppProps) {
   const [reports, setReports] = useState(initialReports);
   const [categories] = useState(initialCategories);
-  const [reporters] = useState(initialReporters);
+  const [reporters, setReporters] = useState(initialReporters);
+  const [currentUser, setCurrentUser] = useState<PublicUser | null>(null);
+  const [users, setUsers] = useState<PublicUser[]>([]);
+  const [kycSubmissions, setKycSubmissions] = useState<KycSubmission[]>([]);
+  const [myKyc, setMyKyc] = useState<KycSubmission | null>(null);
   const [activeCategory, setActiveCategory] = useState(initialCategory);
   const [activeStatus, setActiveStatus] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
   const [dark, setDark] = useState(false);
   const [toast, setToast] = useState("");
   const [mediaPreview, setMediaPreview] = useState<{ type: MediaType; url: string; name?: string } | null>(null);
+  const [authMode, setAuthMode] = useState<"login" | "signup">("signup");
+  const [liveOpen, setLiveOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   const visibleReports = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -107,6 +119,7 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     }
+    refreshSession();
   }, []);
 
   function flash(message: string) {
@@ -120,11 +133,150 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
     setReports(data.reports);
   }
 
-  async function submitReport(event: FormEvent<HTMLFormElement>) {
+  async function refreshSession() {
+    const response = await fetch("/api/auth/me", { cache: "no-store" });
+    const data = (await response.json()) as {
+      user: PublicUser | null;
+      users: PublicUser[];
+      kycSubmissions: KycSubmission[];
+      myKyc: KycSubmission | null;
+    };
+    setCurrentUser(data.user);
+    setUsers(data.users);
+    setKycSubmissions(data.kycSubmissions);
+    setMyKyc(data.myKyc);
+
+    const reporterResponse = await fetch("/api/reporters", { cache: "no-store" });
+    const reporterData = (await reporterResponse.json()) as { reporters: ReporterProfile[] };
+    setReporters(reporterData.reporters);
+  }
+
+  async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const asReporter = form.get("asReporter") === "on";
-    const reporter = asReporter ? reporters[0] : undefined;
+    const endpoint = authMode === "signup" ? "/api/auth/signup" : "/api/auth/login";
+    const body =
+      authMode === "signup"
+        ? { name: String(form.get("name") ?? ""), email: String(form.get("email") ?? ""), password: String(form.get("password") ?? "") }
+        : { email: String(form.get("email") ?? ""), password: String(form.get("password") ?? "") };
+    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!response.ok) {
+      flash(authMode === "signup" ? "Could not create account" : "Login failed");
+      return;
+    }
+    event.currentTarget.reset();
+    await refreshSession();
+    flash(authMode === "signup" ? "Account created" : "Welcome back");
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setCurrentUser(null);
+    setUsers([]);
+    setKycSubmissions([]);
+    setMyKyc(null);
+    flash("Signed out");
+  }
+
+  async function submitKyc(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const body = Object.fromEntries(form.entries());
+    const response = await fetch("/api/kyc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!response.ok) {
+      flash("KYC needs more detail");
+      return;
+    }
+    event.currentTarget.reset();
+    await refreshSession();
+    flash("Reporter KYC submitted");
+  }
+
+  async function updateRole(userId: string, role: UserRole) {
+    const response = await fetch(`/api/admin/users/${userId}/role`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    });
+    if (!response.ok) {
+      flash("Could not update role");
+      return;
+    }
+    await refreshSession();
+    flash("Role updated");
+  }
+
+  async function reviewKyc(submissionId: string, status: "approved" | "rejected") {
+    const response = await fetch(`/api/admin/kyc/${submissionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, reviewerNote: status === "approved" ? "Approved by admin" : "Rejected by admin" }),
+    });
+    if (!response.ok) {
+      flash("Could not review KYC");
+      return;
+    }
+    await refreshSession();
+    flash(status === "approved" ? "Reporter verified" : "KYC rejected");
+  }
+
+  async function toDataUrl(file: Blob) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function openLiveCamera() {
+    if (!currentUser) {
+      flash("Create an account or log in first");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      flash("Camera recording is not supported on this device");
+      return;
+    }
+    setLiveOpen(true);
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    streamRef.current = stream;
+    if (videoRef.current) videoRef.current.srcObject = stream;
+  }
+
+  function closeLiveCamera() {
+    recorderRef.current?.state === "recording" && recorderRef.current.stop();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    setRecording(false);
+    setLiveOpen(false);
+  }
+
+  function startRecording() {
+    if (!streamRef.current) return;
+    chunksRef.current = [];
+    const recorder = new MediaRecorder(streamRef.current);
+    recorder.ondataavailable = (event) => event.data.size && chunksRef.current.push(event.data);
+    recorder.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: "video/webm" });
+      setMediaPreview({ type: "video", url: await toDataUrl(blob), name: `live-report-${Date.now()}.webm` });
+      closeLiveCamera();
+      document.querySelector("#submit")?.scrollIntoView({ behavior: "smooth" });
+      flash("Live recording attached");
+    };
+    recorderRef.current = recorder;
+    recorder.start();
+    setRecording(true);
+  }
+
+  async function submitReport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!currentUser) {
+      flash("Login required to submit reports");
+      return;
+    }
+    const form = new FormData(event.currentTarget);
+    const isVerifiedReporter = currentUser.role === "reporter" && currentUser.reporterVerified;
     const media = mediaPreview
       ? [
           {
@@ -143,9 +295,10 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
       categorySlug: String(form.get("categorySlug") ?? "governance"),
       locationName: String(form.get("locationName") ?? ""),
       state: String(form.get("state") ?? "Unknown"),
-      sourceType: asReporter ? "Reporter" : "Eyewitness",
-      authorName: reporter?.name ?? String(form.get("authorName") || "Eyewitness"),
-      reporterId: reporter?.id,
+      sourceType: isVerifiedReporter ? "Reporter" : "Eyewitness",
+      authorId: currentUser.id,
+      authorName: currentUser.name,
+      reporterId: isVerifiedReporter ? currentUser.id : undefined,
       live: true,
       priority: form.get("priority") === "breaking" ? "breaking" : "normal",
       status: "in_review",
@@ -182,6 +335,10 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
   }
 
   async function addComment(report: Report, text: string) {
+    if (!currentUser) {
+      flash("Login required to comment");
+      return;
+    }
     const response = await fetch(`/api/reports/${report.id}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -198,6 +355,10 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
   }
 
   async function reviewReport(report: Report, decision: "approve" | "reject") {
+    if (!currentUser || (currentUser.role !== "admin" && currentUser.role !== "editor")) {
+      flash("Editor access required");
+      return;
+    }
     const response = await fetch(`/api/editor/reports/${report.id}/${decision}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -253,7 +414,7 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
           <button className="icon-button" type="button" aria-label="Toggle theme" title="Toggle theme" onClick={() => setDark((value) => !value)}>
             {dark ? <Sun /> : <Moon />}
           </button>
-          <button className="primary-button" type="button" onClick={() => document.querySelector("#submit")?.scrollIntoView({ behavior: "smooth" })}>
+          <button className="primary-button" type="button" onClick={openLiveCamera}>
             <Radio />
             Go Live
           </button>
@@ -266,14 +427,59 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
             <p className="eyebrow">Civic signal room</p>
             <h1 id="dashboardTitle">VisionEcho Live</h1>
             <p>Field reports, reporter stories, and editor-verified civic updates moving across Nigeria in real time.</p>
+            <button className="primary-button hero-live-button" type="button" onClick={openLiveCamera}>
+              <Radio />
+              Go Live
+            </button>
           </div>
 
           <div className="signal-grid" aria-label="Live newsroom status">
             <StatusMetric value={liveCount} label="Live reports" />
             <StatusMetric value={verifiedCount} label="Verified" />
             <StatusMetric value={queueCount} label="In review" />
-            <StatusMetric value={stateCount || 36} label="States covered" />
+            <StatusMetric value={stateCount} label="States covered" />
           </div>
+        </section>
+
+        <section className="account-band" aria-label="Account and access">
+          <Panel title={currentUser ? "Account" : authMode === "signup" ? "Create Account" : "Login"}>
+            {currentUser ? (
+              <div className="account-summary">
+                <div>
+                  <strong>{currentUser.name}</strong>
+                  <span>{currentUser.email}</span>
+                </div>
+                <div className="evidence-row">
+                  <Pill icon={<UserRound />} text={currentUser.role} variant={currentUser.role === "admin" || currentUser.role === "editor" ? "verified" : "review"} />
+                  <Pill icon={<BadgeCheck />} text={`KYC: ${currentUser.kycStatus}`} variant={currentUser.reporterVerified ? "verified" : "review"} />
+                </div>
+                <button className="ghost-button" type="button" onClick={logout}>Sign out</button>
+              </div>
+            ) : (
+              <form className="auth-form" onSubmit={submitAuth}>
+                {authMode === "signup" ? (
+                  <label>
+                    Full name
+                    <input name="name" required placeholder="Your legal or newsroom name" />
+                  </label>
+                ) : null}
+                <label>
+                  Email
+                  <input name="email" type="email" required placeholder="you@example.com" />
+                </label>
+                <label>
+                  Password
+                  <input name="password" type="password" required minLength={8} placeholder="Minimum 8 characters" />
+                </label>
+                <div className="auth-actions">
+                  <button className="primary-button" type="submit">{authMode === "signup" ? "Create account" : "Login"}</button>
+                  <button className="ghost-button" type="button" onClick={() => setAuthMode(authMode === "signup" ? "login" : "signup")}>
+                    {authMode === "signup" ? "I already have an account" : "Create a new account"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </Panel>
         </section>
 
         <section className="workspace-grid">
@@ -355,7 +561,7 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
                   />
                 ))
               ) : (
-                <div className="empty-state">No reports match the current filters.</div>
+                <div className="empty-state">No live civic reports yet. Sign in and submit the first verified signal from the field.</div>
               )}
             </div>
           </section>
@@ -425,15 +631,16 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
                         return;
                       }
                       const type = file.type.startsWith("video") ? "video" : file.type.startsWith("audio") ? "audio" : "image";
-                      setMediaPreview({ type, url: URL.createObjectURL(file), name: file.name });
+                      toDataUrl(file).then((url) => setMediaPreview({ type, url, name: file.name })).catch(() => flash("Could not read media"));
                     }}
                   />
                 </label>
                 <MediaPreview preview={mediaPreview} />
-                <label className="checkbox-row">
-                  <input name="asReporter" type="checkbox" />
-                  Submit as reporter story
-                </label>
+                {currentUser?.role === "reporter" && currentUser.reporterVerified ? (
+                  <p className="form-note">This will be submitted as a verified reporter story and sent to editors for approval.</p>
+                ) : (
+                  <p className="form-note">This will be submitted as an eyewitness report. Complete reporter KYC to submit reporter stories.</p>
+                )}
                 <button className="primary-button wide" type="submit">
                   <Send />
                   Submit for Review
@@ -441,9 +648,34 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
               </form>
             </Panel>
 
+            <Panel id="kyc" eyebrow="Reporter verification" title="Reporter KYC" icon={<BadgeCheck />}>
+              {currentUser ? (
+                currentUser.reporterVerified ? (
+                  <div className="empty-state">Your reporter profile is verified. Submitted stories will carry reporter status.</div>
+                ) : myKyc?.status === "pending" ? (
+                  <div className="empty-state">Your KYC is pending admin review.</div>
+                ) : (
+                  <form className="report-form" onSubmit={submitKyc}>
+                    <label>Full legal name<input name="fullName" required /></label>
+                    <label>Phone<input name="phone" required /></label>
+                    <label>Base location<input name="location" required placeholder="City, state" /></label>
+                    <label>Reporting beat<input name="beat" required placeholder="Elections, security, governance..." /></label>
+                    <label>Experience<textarea name="experience" required rows={3} placeholder="Tell editors about your reporting background and civic coverage experience." /></label>
+                    <label>ID type<input name="idType" required placeholder="NIN, passport, press ID..." /></label>
+                    <label>ID/reference number<input name="idNumber" required /></label>
+                    <button className="primary-button wide" type="submit">Submit KYC</button>
+                  </form>
+                )
+              ) : (
+                <div className="empty-state">Login to submit reporter KYC.</div>
+              )}
+            </Panel>
+
             <Panel id="editor" eyebrow="Verification desk" title="Editor Queue" icon={<ShieldCheck />}>
               <div className="queue-list">
-                {reports.filter((report) => report.status === "in_review").length ? (
+                {currentUser?.role !== "admin" && currentUser?.role !== "editor" ? (
+                  <div className="empty-state">Editor access required. Admins can assign editor roles.</div>
+                ) : reports.filter((report) => report.status === "in_review").length ? (
                   reports
                     .filter((report) => report.status === "in_review")
                     .map((report) => (
@@ -468,7 +700,7 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
 
             <Panel id="profiles" eyebrow="Network" title="Reporter Profiles" icon={<Users />}>
               <div className="profile-list">
-                {reporters.map((reporter) => (
+                {reporters.length ? reporters.map((reporter) => (
                   <article className="profile-card" key={reporter.id}>
                     <div className="profile-topline">
                       <span className="avatar">{reporter.initials}</span>
@@ -487,9 +719,37 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
                       View stories
                     </button>
                   </article>
-                ))}
+                )) : <div className="empty-state">No verified reporters yet. Admin-approved KYC profiles will appear here.</div>}
               </div>
             </Panel>
+
+            {currentUser?.role === "admin" ? (
+              <Panel id="admin" eyebrow="Admin desk" title="Roles & KYC" icon={<ShieldCheck />}>
+                <div className="queue-list">
+                  {users.map((user) => (
+                    <article className="queue-item" key={user.id}>
+                      <h3>{user.name}</h3>
+                      <p>{user.email} - {user.role} - KYC {user.kycStatus}</p>
+                      <div className="queue-actions">
+                        {(["user", "reporter", "editor", "admin"] as UserRole[]).map((role) => (
+                          <button type="button" key={role} onClick={() => updateRole(user.id, role)}>{role}</button>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                  {kycSubmissions.map((submission) => (
+                    <article className="queue-item" key={submission.id}>
+                      <h3>{submission.fullName}</h3>
+                      <p>{submission.beat} - {submission.location} - {submission.status}</p>
+                      <div className="queue-actions">
+                        <button className="approve" type="button" onClick={() => reviewKyc(submission.id, "approved")}>Approve KYC</button>
+                        <button className="reject" type="button" onClick={() => reviewKyc(submission.id, "rejected")}>Reject</button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </Panel>
+            ) : null}
           </aside>
         </section>
       </main>
@@ -507,6 +767,27 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
       </nav>
 
       {toast ? <div className="toast">{toast}</div> : null}
+      {liveOpen ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Live camera recorder">
+          <div className="live-modal">
+            <div className="panel-title-row">
+              <div>
+                <p className="eyebrow">Go live</p>
+                <h2>Record field evidence</h2>
+              </div>
+              <button className="icon-button" type="button" onClick={closeLiveCamera} aria-label="Close recorder">×</button>
+            </div>
+            <video ref={videoRef} autoPlay muted playsInline className="live-preview" />
+            <div className="queue-actions">
+              {!recording ? (
+                <button className="primary-button" type="button" onClick={startRecording}><Camera /> Start recording</button>
+              ) : (
+                <button className="primary-button" type="button" onClick={() => recorderRef.current?.stop()}><StopCircle /> Stop and attach</button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,4 +1,6 @@
-export type UserRole = "eyewitness" | "reporter" | "editor" | "admin";
+export type UserRole = "user" | "reporter" | "editor" | "admin";
+export type UserStatus = "pending_role" | "active" | "suspended";
+export type KycStatus = "not_started" | "pending" | "approved" | "rejected";
 
 export type ReportStatus =
   | "submitted"
@@ -31,6 +33,37 @@ export type ReporterProfile = {
   totalStories: number;
   trustScore: number;
   status: "verified" | "pending" | "revoked";
+};
+
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  passwordHash: string;
+  role: UserRole;
+  status: UserStatus;
+  kycStatus: KycStatus;
+  reporterVerified: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PublicUser = Omit<User, "passwordHash">;
+
+export type KycSubmission = {
+  id: string;
+  userId: string;
+  fullName: string;
+  phone: string;
+  location: string;
+  beat: string;
+  experience: string;
+  idType: string;
+  idNumber: string;
+  status: KycStatus;
+  reviewerNote?: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type Comment = {
@@ -77,6 +110,7 @@ export type Report = {
   latitude?: number;
   longitude?: number;
   sourceType: "Eyewitness" | "Reporter";
+  authorId?: string;
   authorName: string;
   reporterId?: string;
   status: ReportStatus;
@@ -94,4 +128,6 @@ export type VisionEchoDb = {
   categories: Category[];
   reporters: ReporterProfile[];
   reports: Report[];
+  users: User[];
+  kycSubmissions: KycSubmission[];
 };

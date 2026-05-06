@@ -7,10 +7,15 @@ The original static prototype is preserved in `legacy-static/`. The active produ
 ## What Works Now
 
 - Responsive live feed with category, status, and search filters
-- Eyewitness and reporter report submission
+- User registration and login
+- First registered account becomes the bootstrap admin
+- Admin role assignment for user, reporter, editor, and admin access
+- Reporter KYC submission and admin approval
+- Eyewitness and verified reporter report submission
 - Text, image, video, and audio preview handling
+- Go Live camera/audio recorder for field evidence capture
 - Location capture prompt for field users
-- Editor queue with approve and reject actions
+- Editor/admin queue with approve and reject actions
 - Verification labels and evidence pills
 - Report comments
 - Reporter profile cards
@@ -67,7 +72,8 @@ The web app is mobile responsive and PWA-ready now. The next native app step is 
 
 ## Production Gaps Before Public Launch
 
-- Authentication and role-based access control
+- Hosted Postgres/Neon database wired to replace the current local JSON/in-memory adapter
+- `AUTH_SECRET` configured in Vercel environment variables
 - Signed object storage for real media uploads
 - Media malware scanning and content moderation
 - Rate limiting and abuse reporting
