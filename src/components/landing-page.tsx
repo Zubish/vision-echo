@@ -35,14 +35,6 @@ export function LandingPage() {
             <small>Live</small>
           </span>
         </a>
-        <nav>
-          <a href="#why">Why</a>
-          <a href="#how">How it works</a>
-          <a href="#access">Access</a>
-          <a className="ghost-button" href="/dashboard">
-            Dashboard
-          </a>
-        </nav>
       </header>
 
       <main className="landing-main">
@@ -56,11 +48,8 @@ export function LandingPage() {
             </p>
             <div className="landing-actions">
               <a className="primary-button" href="#access">
-                Join VisionEcho
+                Tell Your Story
                 <ArrowRight />
-              </a>
-              <a className="ghost-button" href="/dashboard">
-                Enter dashboard
               </a>
             </div>
           </div>

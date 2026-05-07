@@ -146,7 +146,7 @@ video {
   min-height: 31rem;
   padding: clamp(1.25rem, 4vw, 3rem);
   background:
-    linear-gradient(90deg, color-mix(in srgb, var(--surface), transparent 0%), color-mix(in srgb, var(--surface), transparent 20%)),
+    linear-gradient(90deg, color-mix(in srgb, var(--surface), transparent 40%), color-mix(in srgb, var(--surface), transparent 55%)),
     url("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Aerial_view_of_a_busy_tomato_market_in_Lagos_Nigeria.jpg/960px-Aerial_view_of_a_busy_tomato_market_in_Lagos_Nigeria.jpg");
   background-position: center;
   background-size: cover;
