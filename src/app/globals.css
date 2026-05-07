@@ -152,8 +152,7 @@ video {
   background-size: cover;
 }
 
-.landing-copy .eyebrow,
-.landing-copy > p:not(.eyebrow) {
+.landing-copy .eyebrow {
   color: var(--brand);
 }
 
