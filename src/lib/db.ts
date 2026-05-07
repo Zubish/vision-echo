@@ -133,6 +133,8 @@ async function ensurePostgresSchema() {
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name text`;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS name text`;
   await sql`UPDATE users SET name = COALESCE(name, full_name, email, 'VisionEcho user') WHERE name IS NULL`;
+  await sql`UPDATE users SET full_name = COALESCE(full_name, name, email, 'VisionEcho user') WHERE full_name IS NULL`;
+  await sql`ALTER TABLE users ALTER COLUMN full_name DROP NOT NULL`;
   await sql`ALTER TABLE users ALTER COLUMN name SET NOT NULL`;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user'`;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active'`;
@@ -355,8 +357,8 @@ export async function createUser(input: Pick<User, "name" | "email" | "passwordH
     const userCount = await sql`SELECT count(*)::int AS count FROM users`;
     const role: UserRole = Number(userCount[0]?.count ?? 0) === 0 ? "admin" : "user";
     const rows = await sql`
-      INSERT INTO users (id, name, email, password_hash, role, status, kyc_status, reporter_verified)
-      VALUES (${createId("user")}, ${input.name}, ${input.email.toLowerCase()}, ${input.passwordHash}, ${role}, 'active', 'not_started', false)
+      INSERT INTO users (id, full_name, name, email, password_hash, role, status, kyc_status, reporter_verified)
+      VALUES (${createId("user")}, ${input.name}, ${input.name}, ${input.email.toLowerCase()}, ${input.passwordHash}, ${role}, 'active', 'not_started', false)
       RETURNING *
     `;
     return toUser(rows[0]);
