@@ -61,13 +61,15 @@ export async function getCurrentUser() {
   if (expectedBuffer.length !== signatureBuffer.length || !timingSafeEqual(expectedBuffer, signatureBuffer)) return null;
   if (Number(expiresAt) < Date.now()) return null;
 
-  return getUserById(userId);
+  const user = await getUserById(userId);
+  if (user?.status !== "active") return null;
+  return user;
 }
 
 export function canEdit(user: PublicUser | User | null) {
-  return user?.role === "editor" || user?.role === "admin";
+  return user?.status === "active" && (user.role === "editor" || user.role === "admin");
 }
 
 export function canAdmin(user: PublicUser | User | null) {
-  return user?.role === "admin";
+  return user?.status === "active" && user.role === "admin";
 }

@@ -9,8 +9,11 @@ The original static prototype is preserved in `legacy-static/`. The active produ
 - Responsive live feed with category, status, and search filters
 - User registration and login
 - First registered account becomes the bootstrap admin
-- Admin role assignment for user, reporter, editor, and admin access
+- Role-specific dashboards for user, reporter, editor, and admin access
+- Admin role assignment for user, reporter, editor, and admin access, with first-admin protection
+- Account activation/deactivation from the admin desk
 - Reporter KYC submission and admin approval
+- Verified reporter applications to join the editor desk
 - Eyewitness and verified reporter report submission
 - Text, image, video, and audio preview handling
 - Go Live camera/audio recorder for field evidence capture
@@ -52,9 +55,20 @@ Then restart the dev server or refresh the app.
 ## Product Routes
 
 - `/` - Live newsroom
+- `/dashboard` - Authenticated role-based workspace
 - `/category/[slug]` - Category page
 - `/report/[id]` - Shareable report view
 - `/offline` - PWA offline fallback
+
+## Role Interfaces
+
+Every new account starts as `user`.
+
+- `user`: sees the live feed, category filters, eyewitness report submission, comments, session panel, reporter KYC application, and verified reporter profiles. No editor queue, admin controls, role controls, KYC review queue, or account management is shown.
+- `reporter`: sees the live feed, reporter story submission, comments, reporter profile network, and editor application panel. Reporters reach this role only after admin-approved KYC.
+- `editor`: sees reporter tools plus the editor queue for approving or rejecting submitted stories. Editors do not see admin account controls unless they are also admins.
+- `admin`: sees editor tools plus account roles, account activation/deactivation, reporter KYC review, editor application review, and admin promotion controls.
+- `first admin`: the first registered account. This account has complete autonomy, can demote later admins, and cannot be demoted or deactivated by subsequent admins.
 
 ## API Routes
 
@@ -65,6 +79,10 @@ Then restart the dev server or refresh the app.
 - `POST /api/reports/:id/comments`
 - `POST /api/editor/reports/:id/approve`
 - `POST /api/editor/reports/:id/reject`
+- `POST /api/role-applications`
+- `PATCH /api/admin/role-applications/:id`
+- `PATCH /api/admin/users/:id/role`
+- `PATCH /api/admin/users/:id/status`
 - `GET /api/categories`
 - `GET /api/reporters`
 

@@ -57,4 +57,5 @@ export const seedDb: VisionEchoDb = {
   reports: [],
   users: [],
   kycSubmissions: [],
+  roleApplications: [],
 };

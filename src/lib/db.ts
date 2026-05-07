@@ -4,6 +4,7 @@ import path from "node:path";
 import { neon } from "@neondatabase/serverless";
 import { categories, seedDb } from "./seed";
 import type {
+  ApplicationStatus,
   Comment,
   KycStatus,
   KycSubmission,
@@ -11,8 +12,10 @@ import type {
   EvidenceItem,
   Report,
   ReviewDecision,
+  RoleApplication,
   User,
   UserRole,
+  UserStatus,
   VisionEchoDb,
 } from "./types";
 
@@ -78,6 +81,19 @@ function toKyc(row: Record<string, unknown>): KycSubmission {
     idType: String(row.id_type),
     idNumber: String(row.id_number),
     status: row.status as KycStatus,
+    reviewerNote: row.reviewer_note ? String(row.reviewer_note) : undefined,
+    createdAt: new Date(String(row.created_at)).toISOString(),
+    updatedAt: new Date(String(row.updated_at)).toISOString(),
+  };
+}
+
+function toRoleApplication(row: Record<string, unknown>): RoleApplication {
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    requestedRole: row.requested_role as RoleApplication["requestedRole"],
+    status: row.status as ApplicationStatus,
+    note: String(row.note),
     reviewerNote: row.reviewer_note ? String(row.reviewer_note) : undefined,
     createdAt: new Date(String(row.created_at)).toISOString(),
     updatedAt: new Date(String(row.updated_at)).toISOString(),
@@ -166,6 +182,19 @@ async function ensurePostgresSchema() {
   `;
 
   await sql`
+    CREATE TABLE IF NOT EXISTS role_applications (
+      id text PRIMARY KEY,
+      user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      requested_role text NOT NULL,
+      status text NOT NULL DEFAULT 'pending',
+      note text NOT NULL,
+      reviewer_note text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `;
+
+  await sql`
     CREATE TABLE IF NOT EXISTS reports (
       id text PRIMARY KEY,
       title text NOT NULL,
@@ -196,6 +225,7 @@ async function ensurePostgresSchema() {
   await sql`CREATE INDEX IF NOT EXISTS reports_category_idx ON reports(category_slug)`;
   await sql`CREATE INDEX IF NOT EXISTS reports_created_idx ON reports(created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS kyc_user_idx ON kyc_submissions(user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS role_applications_user_idx ON role_applications(user_id)`;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx ON users (lower(email))`;
   postgresSchemaReady = true;
 }
@@ -208,6 +238,7 @@ async function ensureLocalDb() {
     memoryDb = JSON.parse(file) as VisionEchoDb;
     memoryDb.users ??= [];
     memoryDb.kycSubmissions ??= [];
+    memoryDb.roleApplications ??= [];
     memoryDb.reporters ??= [];
     memoryDb.reports ??= [];
   } catch {
@@ -246,6 +277,13 @@ async function listPostgresKyc() {
   const sql = requireSql();
   const rows = await sql`SELECT * FROM kyc_submissions ORDER BY created_at DESC`;
   return rows.map(toKyc);
+}
+
+async function listPostgresRoleApplications() {
+  await ensurePostgresSchema();
+  const sql = requireSql();
+  const rows = await sql`SELECT * FROM role_applications ORDER BY created_at DESC`;
+  return rows.map(toRoleApplication);
 }
 
 async function listPostgresReports() {
@@ -287,9 +325,14 @@ export async function getDb() {
     return clone(await ensureLocalDb());
   }
 
-  const [users, kycSubmissions, reports] = await Promise.all([listPostgresUsers(), listPostgresKyc(), listPostgresReports()]);
+  const [users, kycSubmissions, reports, roleApplications] = await Promise.all([
+    listPostgresUsers(),
+    listPostgresKyc(),
+    listPostgresReports(),
+    listPostgresRoleApplications(),
+  ]);
   const reporters = await listReporterProfiles(users, kycSubmissions, reports);
-  return { categories, reporters, reports, users, kycSubmissions };
+  return { categories, reporters, reports, users, kycSubmissions, roleApplications };
 }
 
 export async function saveDb(mutator: (db: VisionEchoDb) => void) {
@@ -397,14 +440,43 @@ export async function listUsers() {
   return db.users.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
 }
 
-export async function updateUserRole(userId: string, role: UserRole) {
+export async function getFirstAdminId() {
+  const users = await listUsers();
+  return [...users].sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt))[0]?.id ?? null;
+}
+
+async function assertRoleChangeAllowed(actorId: string, targetId: string, role: UserRole) {
+  const [actor, target, firstAdminId] = await Promise.all([getUserById(actorId), getUserById(targetId), getFirstAdminId()]);
+  if (!actor || actor.role !== "admin" || actor.status !== "active") throw new Error("Admin access required");
+  if (!target) throw new Error("User not found");
+  const actorIsFirstAdmin = actor.id === firstAdminId;
+  const targetIsFirstAdmin = target.id === firstAdminId;
+
+  if (targetIsFirstAdmin && !actorIsFirstAdmin) throw new Error("The first admin is protected");
+  if (target.role === "admin" && role !== "admin" && !actorIsFirstAdmin) throw new Error("Only the first admin can demote admins");
+  if (role === "reporter" && target.kycStatus !== "approved") throw new Error("Reporter promotion requires approved KYC");
+  if (role === "editor" && !target.reporterVerified && target.role !== "admin") {
+    throw new Error("Editor promotion requires verified reporter status");
+  }
+
+  return target;
+}
+
+function reporterVerifiedForRole(target: User, role: UserRole) {
+  return target.kycStatus === "approved" && role !== "user";
+}
+
+export async function updateUserRole(actorId: string, userId: string, role: UserRole) {
+  const target = await assertRoleChangeAllowed(actorId, userId, role);
+  const reporterVerified = reporterVerifiedForRole(target, role);
+
   if (shouldUsePostgres()) {
     await ensurePostgresSchema();
     const sql = requireSql();
     const rows = await sql`
       UPDATE users
       SET role = ${role},
-          reporter_verified = CASE WHEN ${role} = 'reporter' AND kyc_status = 'approved' THEN true ELSE false END,
+          reporter_verified = ${reporterVerified},
           updated_at = now()
       WHERE id = ${userId}
       RETURNING *
@@ -418,10 +490,41 @@ export async function updateUserRole(userId: string, role: UserRole) {
     const user = db.users.find((item) => item.id === userId);
     if (!user) throw new Error("User not found");
     user.role = role;
+    user.reporterVerified = reporterVerifiedForRole(user, role);
     user.updatedAt = new Date().toISOString();
-    if (role === "reporter" && user.kycStatus !== "approved") {
-      user.reporterVerified = false;
-    }
+    updated = user;
+  });
+  return updated;
+}
+
+export async function updateUserStatus(actorId: string, userId: string, status: Extract<UserStatus, "active" | "suspended">) {
+  const [actor, target, firstAdminId] = await Promise.all([getUserById(actorId), getUserById(userId), getFirstAdminId()]);
+  if (!actor || actor.role !== "admin" || actor.status !== "active") throw new Error("Admin access required");
+  if (!target) throw new Error("User not found");
+  const actorIsFirstAdmin = actor.id === firstAdminId;
+  if (target.id === firstAdminId && !actorIsFirstAdmin) throw new Error("The first admin is protected");
+  if (target.id === actor.id && status === "suspended") throw new Error("You cannot deactivate your own account");
+  if (target.role === "admin" && !actorIsFirstAdmin && target.id !== actor.id) throw new Error("Only the first admin can deactivate admins");
+
+  if (shouldUsePostgres()) {
+    await ensurePostgresSchema();
+    const sql = requireSql();
+    const rows = await sql`
+      UPDATE users
+      SET status = ${status}, updated_at = now()
+      WHERE id = ${userId}
+      RETURNING *
+    `;
+    if (!rows[0]) throw new Error("User not found");
+    return toUser(rows[0]);
+  }
+
+  let updated: User | null = null;
+  await saveLocalDb((db) => {
+    const user = db.users.find((item) => item.id === userId);
+    if (!user) throw new Error("User not found");
+    user.status = status;
+    user.updatedAt = new Date().toISOString();
     updated = user;
   });
   return updated;
@@ -512,6 +615,92 @@ export async function listKycSubmissions() {
 
   const db = await getDb();
   return db.kycSubmissions.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+}
+
+export async function listRoleApplications() {
+  if (shouldUsePostgres()) return listPostgresRoleApplications();
+
+  const db = await getDb();
+  return db.roleApplications.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+}
+
+export async function getMyRoleApplication(userId: string) {
+  const applications = await listRoleApplications();
+  return applications.find((application) => application.userId === userId && application.status === "pending") ?? null;
+}
+
+export async function submitRoleApplication(userId: string, note: string) {
+  const user = await getUserById(userId);
+  if (!user || user.status !== "active") throw new Error("User not found");
+  if (user.role !== "reporter" || !user.reporterVerified) {
+    throw new Error("Only verified reporters can apply to become editors");
+  }
+  if (await getMyRoleApplication(userId)) throw new Error("Application already pending");
+
+  if (shouldUsePostgres()) {
+    await ensurePostgresSchema();
+    const sql = requireSql();
+    const rows = await sql`
+      INSERT INTO role_applications (id, user_id, requested_role, status, note)
+      VALUES (${createId("role-app")}, ${userId}, 'editor', 'pending', ${note})
+      RETURNING *
+    `;
+    return toRoleApplication(rows[0]);
+  }
+
+  let application: RoleApplication | null = null;
+  await saveLocalDb((db) => {
+    const now = new Date().toISOString();
+    application = {
+      id: createId("role-app"),
+      userId,
+      requestedRole: "editor",
+      status: "pending",
+      note,
+      createdAt: now,
+      updatedAt: now,
+    };
+    db.roleApplications.unshift(application);
+  });
+  return application;
+}
+
+export async function reviewRoleApplication(
+  actorId: string,
+  applicationId: string,
+  status: Extract<ApplicationStatus, "approved" | "rejected">,
+  reviewerNote?: string,
+) {
+  const actor = await getUserById(actorId);
+  if (!actor || actor.role !== "admin" || actor.status !== "active") throw new Error("Admin access required");
+
+  if (shouldUsePostgres()) {
+    await ensurePostgresSchema();
+    const sql = requireSql();
+    const rows = await sql`
+      UPDATE role_applications
+      SET status = ${status}, reviewer_note = ${reviewerNote ?? null}, updated_at = now()
+      WHERE id = ${applicationId}
+      RETURNING *
+    `;
+    const application = rows[0] ? toRoleApplication(rows[0]) : null;
+    if (!application) throw new Error("Application not found");
+    if (status === "approved") await updateUserRole(actorId, application.userId, application.requestedRole);
+    return application;
+  }
+
+  let updated: RoleApplication | null = null;
+  await saveLocalDb((db) => {
+    const application = db.roleApplications.find((item) => item.id === applicationId);
+    if (!application) throw new Error("Application not found");
+    application.status = status;
+    application.reviewerNote = reviewerNote;
+    application.updatedAt = new Date().toISOString();
+    updated = application;
+  });
+  const reviewedApplication = updated as RoleApplication | null;
+  if (reviewedApplication && status === "approved") await updateUserRole(actorId, reviewedApplication.userId, reviewedApplication.requestedRole);
+  return updated;
 }
 
 export async function getReport(idOrSlug: string) {

@@ -1,6 +1,7 @@
 export type UserRole = "user" | "reporter" | "editor" | "admin";
 export type UserStatus = "pending_role" | "active" | "suspended";
 export type KycStatus = "not_started" | "pending" | "approved" | "rejected";
+export type ApplicationStatus = "pending" | "approved" | "rejected";
 
 export type ReportStatus =
   | "submitted"
@@ -61,6 +62,17 @@ export type KycSubmission = {
   idType: string;
   idNumber: string;
   status: KycStatus;
+  reviewerNote?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RoleApplication = {
+  id: string;
+  userId: string;
+  requestedRole: Extract<UserRole, "editor">;
+  status: ApplicationStatus;
+  note: string;
   reviewerNote?: string;
   createdAt: string;
   updatedAt: string;
@@ -130,4 +142,5 @@ export type VisionEchoDb = {
   reports: Report[];
   users: User[];
   kycSubmissions: KycSubmission[];
+  roleApplications: RoleApplication[];
 };

@@ -31,7 +31,7 @@ import {
   Users,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import type { Category, KycSubmission, MediaType, PublicUser, Report, ReporterProfile, ReportStatus, UserRole } from "@/lib/types";
+import type { Category, KycSubmission, MediaType, PublicUser, Report, ReporterProfile, ReportStatus, RoleApplication, UserRole, UserStatus } from "@/lib/types";
 
 type AppProps = {
   initialCategories: Category[];
@@ -77,7 +77,10 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
   const [currentUser, setCurrentUser] = useState<PublicUser | null>(null);
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [kycSubmissions, setKycSubmissions] = useState<KycSubmission[]>([]);
+  const [roleApplications, setRoleApplications] = useState<RoleApplication[]>([]);
   const [myKyc, setMyKyc] = useState<KycSubmission | null>(null);
+  const [myRoleApplication, setMyRoleApplication] = useState<RoleApplication | null>(null);
+  const [firstAdminId, setFirstAdminId] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState(initialCategory);
   const [activeStatus, setActiveStatus] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
@@ -113,6 +116,22 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
   const verifiedCount = reports.filter((report) => report.status === "verified").length;
   const queueCount = reports.filter((report) => report.status === "in_review").length;
   const stateCount = new Set(reports.filter((report) => report.status !== "rejected").map((report) => report.state)).size;
+  const isAdmin = currentUser?.role === "admin";
+  const isEditor = currentUser?.role === "editor" || isAdmin;
+  const isReporter = Boolean(
+    currentUser && (currentUser.role === "reporter" || currentUser.role === "editor" || currentUser.role === "admin") && currentUser.reporterVerified,
+  );
+  const roleLabel = currentUser ? (currentUser.id === firstAdminId ? "first admin" : currentUser.role) : "guest";
+  const activeNavItems = [
+    { href: "#feed", label: "Live Feed", show: true },
+    { href: "#submit", label: isReporter ? "Reporter Desk" : "Submit", show: Boolean(currentUser) },
+    { href: "#kyc", label: "Reporter KYC", show: Boolean(currentUser && !isReporter && !isEditor) },
+    { href: "#editor-apply", label: "Editor Track", show: Boolean(currentUser?.role === "reporter" && currentUser.reporterVerified) },
+    { href: "#editor", label: "Editor Desk", show: Boolean(isEditor) },
+    { href: "#admin", label: "Admin", show: Boolean(isAdmin) },
+    { href: "#profiles", label: "Profiles", show: true },
+    { href: "/", label: "Story", show: true },
+  ].filter((item) => item.show);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -138,12 +157,18 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
       user: PublicUser | null;
       users: PublicUser[];
       kycSubmissions: KycSubmission[];
+      roleApplications: RoleApplication[];
       myKyc: KycSubmission | null;
+      myRoleApplication: RoleApplication | null;
+      firstAdminId: string | null;
     };
     setCurrentUser(data.user);
     setUsers(data.users);
     setKycSubmissions(data.kycSubmissions);
+    setRoleApplications(data.roleApplications);
     setMyKyc(data.myKyc);
+    setMyRoleApplication(data.myRoleApplication);
+    setFirstAdminId(data.firstAdminId);
 
     const reporterResponse = await fetch("/api/reporters", { cache: "no-store" });
     const reporterData = (await reporterResponse.json()) as { reporters: ReporterProfile[] };
@@ -155,7 +180,9 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
     setCurrentUser(null);
     setUsers([]);
     setKycSubmissions([]);
+    setRoleApplications([]);
     setMyKyc(null);
+    setMyRoleApplication(null);
     flash("Signed out");
   }
 
@@ -180,11 +207,60 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
       body: JSON.stringify({ role }),
     });
     if (!response.ok) {
-      flash("Could not update role");
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      flash(data?.error ?? "Could not update role");
       return;
     }
     await refreshSession();
     flash("Role updated");
+  }
+
+  async function updateStatus(userId: string, status: Extract<UserStatus, "active" | "suspended">) {
+    const response = await fetch(`/api/admin/users/${userId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!response.ok) {
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      flash(data?.error ?? "Could not update account");
+      return;
+    }
+    await refreshSession();
+    flash(status === "active" ? "Account activated" : "Account deactivated");
+  }
+
+  async function submitEditorApplication(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const response = await fetch("/api/role-applications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: String(form.get("note") ?? "") }),
+    });
+    if (!response.ok) {
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      flash(data?.error ?? "Could not apply for editor");
+      return;
+    }
+    event.currentTarget.reset();
+    await refreshSession();
+    flash("Editor application submitted");
+  }
+
+  async function reviewRoleApplication(applicationId: string, status: "approved" | "rejected") {
+    const response = await fetch(`/api/admin/role-applications/${applicationId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, reviewerNote: status === "approved" ? "Approved by admin" : "Rejected by admin" }),
+    });
+    if (!response.ok) {
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      flash(data?.error ?? "Could not review application");
+      return;
+    }
+    await refreshSession();
+    flash(status === "approved" ? "Reporter promoted to editor" : "Application rejected");
   }
 
   async function reviewKyc(submissionId: string, status: "approved" | "rejected") {
@@ -257,7 +333,8 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
       return;
     }
     const form = new FormData(event.currentTarget);
-    const isVerifiedReporter = currentUser.role === "reporter" && currentUser.reporterVerified;
+    const isVerifiedReporter =
+      (currentUser.role === "reporter" || currentUser.role === "editor" || currentUser.role === "admin") && currentUser.reporterVerified;
     const media = mediaPreview
       ? [
           {
@@ -385,11 +462,9 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
         </a>
 
         <nav className="topnav" aria-label="Primary">
-          <a href="#feed">Live Feed</a>
-          <a href="#submit">Submit</a>
-          <a href="#editor">Editor Desk</a>
-          <a href="#profiles">Profiles</a>
-          <a href="/">Story</a>
+          {activeNavItems.map((item) => (
+            <a href={item.href} key={item.href}>{item.label}</a>
+          ))}
         </nav>
 
         <div className="top-actions">
@@ -516,9 +591,11 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
                     <span>{currentUser.email}</span>
                   </div>
                   <div className="evidence-row">
-                    <Pill icon={<UserRound />} text={currentUser.role} variant={currentUser.role === "admin" || currentUser.role === "editor" ? "verified" : "review"} />
+                    <Pill icon={<UserRound />} text={roleLabel} variant={currentUser.role === "admin" || currentUser.role === "editor" ? "verified" : "review"} />
                     <Pill icon={<BadgeCheck />} text={`KYC: ${currentUser.kycStatus}`} variant={currentUser.reporterVerified ? "verified" : "review"} />
+                    <Pill icon={<Timer />} text={currentUser.status === "active" ? "active" : "inactive"} variant={currentUser.status === "active" ? "verified" : "review"} />
                   </div>
+                  <p className="form-note">{roleSummary(currentUser, firstAdminId)}</p>
                   <button className="ghost-button" type="button" onClick={logout}>Sign out</button>
                 </div>
               ) : (
@@ -529,7 +606,7 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
               )}
             </Panel>
 
-            <Panel id="submit" eyebrow="Eyewitness desk" title="Post Report" icon={<UploadCloud />}>
+            <Panel id="submit" eyebrow={isReporter ? "Reporter desk" : "Eyewitness desk"} title={isReporter ? "Submit Story" : "Post Report"} icon={<UploadCloud />}>
               <form className="report-form" onSubmit={submitReport}>
                 <label>
                   Title
@@ -610,12 +687,10 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
               </form>
             </Panel>
 
-            <Panel id="kyc" eyebrow="Reporter verification" title="Reporter KYC" icon={<BadgeCheck />}>
-              {currentUser ? (
-                currentUser.reporterVerified ? (
-                  <div className="empty-state">Your reporter profile is verified. Submitted stories will carry reporter status.</div>
-                ) : myKyc?.status === "pending" ? (
-                  <div className="empty-state">Your KYC is pending admin review.</div>
+            {currentUser && !isReporter && !isEditor ? (
+              <Panel id="kyc" eyebrow="Reporter path" title="Apply for Reporter KYC" icon={<BadgeCheck />}>
+                {myKyc?.status === "pending" ? (
+                  <div className="empty-state">Your reporter KYC is pending admin review.</div>
                 ) : (
                   <form className="report-form" onSubmit={submitKyc}>
                     <label>Full legal name<input name="fullName" required /></label>
@@ -625,40 +700,54 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
                     <label>Experience<textarea name="experience" required rows={3} placeholder="Tell editors about your reporting background and civic coverage experience." /></label>
                     <label>ID type<input name="idType" required placeholder="NIN, passport, press ID..." /></label>
                     <label>ID/reference number<input name="idNumber" required /></label>
-                    <button className="primary-button wide" type="submit">Submit KYC</button>
+                    <button className="primary-button wide" type="submit">Submit Reporter KYC</button>
                   </form>
-                )
-              ) : (
-                <div className="empty-state">Login to submit reporter KYC.</div>
-              )}
-            </Panel>
-
-            <Panel id="editor" eyebrow="Verification desk" title="Editor Queue" icon={<ShieldCheck />}>
-              <div className="queue-list">
-                {currentUser?.role !== "admin" && currentUser?.role !== "editor" ? (
-                  <div className="empty-state">Editor access required. Admins can assign editor roles.</div>
-                ) : reports.filter((report) => report.status === "in_review").length ? (
-                  reports
-                    .filter((report) => report.status === "in_review")
-                    .map((report) => (
-                      <article className="queue-item" key={report.id}>
-                        <h3>{report.title}</h3>
-                        <p>{report.locationName} by {report.authorName}</p>
-                        <div className="queue-actions">
-                          <button className="approve" type="button" onClick={() => reviewReport(report, "approve")}>
-                            Approve
-                          </button>
-                          <button className="reject" type="button" onClick={() => reviewReport(report, "reject")}>
-                            Reject
-                          </button>
-                        </div>
-                      </article>
-                    ))
-                ) : (
-                  <div className="empty-state">No stories waiting for review.</div>
                 )}
-              </div>
-            </Panel>
+              </Panel>
+            ) : null}
+
+            {currentUser?.role === "reporter" && currentUser.reporterVerified ? (
+              <Panel id="editor-apply" eyebrow="Editor path" title="Apply for Editor Desk" icon={<ShieldCheck />}>
+                {myRoleApplication ? (
+                  <div className="empty-state">Your editor application is pending admin review.</div>
+                ) : (
+                  <form className="report-form" onSubmit={submitEditorApplication}>
+                    <label>
+                      Why should you become an editor?
+                      <textarea name="note" required rows={4} placeholder="Describe your reporting record, verification judgment, and availability for editor desk work." />
+                    </label>
+                    <button className="primary-button wide" type="submit">Apply for Editor</button>
+                  </form>
+                )}
+              </Panel>
+            ) : null}
+
+            {isEditor ? (
+              <Panel id="editor" eyebrow="Verification desk" title="Editor Queue" icon={<ShieldCheck />}>
+                <div className="queue-list">
+                  {reports.filter((report) => report.status === "in_review").length ? (
+                    reports
+                      .filter((report) => report.status === "in_review")
+                      .map((report) => (
+                        <article className="queue-item" key={report.id}>
+                          <h3>{report.title}</h3>
+                          <p>{report.locationName} by {report.authorName}</p>
+                          <div className="queue-actions">
+                            <button className="approve" type="button" onClick={() => reviewReport(report, "approve")}>
+                              Approve
+                            </button>
+                            <button className="reject" type="button" onClick={() => reviewReport(report, "reject")}>
+                              Reject
+                            </button>
+                          </div>
+                        </article>
+                      ))
+                  ) : (
+                    <div className="empty-state">No stories waiting for review.</div>
+                  )}
+                </div>
+              </Panel>
+            ) : null}
 
             <Panel id="profiles" eyebrow="Network" title="Reporter Profiles" icon={<Users />}>
               <div className="profile-list">
@@ -685,30 +774,59 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
               </div>
             </Panel>
 
-            {currentUser?.role === "admin" ? (
-              <Panel id="admin" eyebrow="Admin desk" title="Roles & KYC" icon={<ShieldCheck />}>
+            {isAdmin && currentUser ? (
+              <Panel id="admin" eyebrow={currentUser.id === firstAdminId ? "First admin desk" : "Admin desk"} title="Roles, Status & Applications" icon={<ShieldCheck />}>
                 <div className="queue-list">
                   {users.map((user) => (
                     <article className="queue-item" key={user.id}>
-                      <h3>{user.name}</h3>
-                      <p>{user.email} - {user.role} - KYC {user.kycStatus}</p>
+                      <h3>{user.name}{user.id === firstAdminId ? " · first admin" : ""}</h3>
+                      <p>{user.email} - {user.role} - {user.status === "active" ? "active" : "deactivated"} - KYC {user.kycStatus}</p>
                       <div className="queue-actions">
                         {(["user", "reporter", "editor", "admin"] as UserRole[]).map((role) => (
-                          <button type="button" key={role} onClick={() => updateRole(user.id, role)}>{role}</button>
+                          <button
+                            type="button"
+                            key={role}
+                            disabled={!canAdminAssignRole(currentUser, user, role, firstAdminId)}
+                            onClick={() => updateRole(user.id, role)}
+                          >
+                            {role}
+                          </button>
                         ))}
+                        <button
+                          className={user.status === "active" ? "reject" : "approve"}
+                          type="button"
+                          disabled={!canAdminChangeStatus(currentUser, user, firstAdminId)}
+                          onClick={() => updateStatus(user.id, user.status === "active" ? "suspended" : "active")}
+                        >
+                          {user.status === "active" ? "Deactivate" : "Activate"}
+                        </button>
                       </div>
                     </article>
                   ))}
-                  {kycSubmissions.map((submission) => (
+                  {kycSubmissions.filter((submission) => submission.status === "pending").map((submission) => (
                     <article className="queue-item" key={submission.id}>
                       <h3>{submission.fullName}</h3>
-                      <p>{submission.beat} - {submission.location} - {submission.status}</p>
+                      <p>Reporter KYC - {submission.beat} - {submission.location}</p>
                       <div className="queue-actions">
-                        <button className="approve" type="button" onClick={() => reviewKyc(submission.id, "approved")}>Approve KYC</button>
+                        <button className="approve" type="button" onClick={() => reviewKyc(submission.id, "approved")}>Approve Reporter</button>
                         <button className="reject" type="button" onClick={() => reviewKyc(submission.id, "rejected")}>Reject</button>
                       </div>
                     </article>
                   ))}
+                  {roleApplications.filter((application) => application.status === "pending").map((application) => {
+                    const applicant = users.find((user) => user.id === application.userId);
+                    return (
+                      <article className="queue-item" key={application.id}>
+                        <h3>{applicant?.name ?? "Reporter application"}</h3>
+                        <p>Editor application - {applicant?.email ?? application.userId}</p>
+                        <p>{application.note}</p>
+                        <div className="queue-actions">
+                          <button className="approve" type="button" onClick={() => reviewRoleApplication(application.id, "approved")}>Approve Editor</button>
+                          <button className="reject" type="button" onClick={() => reviewRoleApplication(application.id, "rejected")}>Reject</button>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               </Panel>
             ) : null}
@@ -723,9 +841,9 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
 
       <nav className="mobile-dock" aria-label="Mobile quick actions">
         <a href="#feed"><Radio /> Feed</a>
-        <a href="#submit"><UploadCloud /> Submit</a>
-        <a href="#editor"><ShieldCheck /> Verify</a>
-        <a href="#profiles"><Users /> Profiles</a>
+        {currentUser ? <a href="#submit"><UploadCloud /> Submit</a> : null}
+        {isEditor ? <a href="#editor"><ShieldCheck /> Verify</a> : null}
+        {isAdmin ? <a href="#admin"><Users /> Admin</a> : <a href="#profiles"><Users /> Profiles</a>}
       </nav>
 
       {toast ? <div className="toast">{toast}</div> : null}
@@ -752,6 +870,32 @@ export function VisionEchoApp({ initialCategories, initialReporters, initialRepo
       ) : null}
     </div>
   );
+}
+
+function roleSummary(user: PublicUser, firstAdminId: string | null) {
+  if (user.id === firstAdminId) return "You are the first admin. You can manage all roles, statuses, KYC, and admin access.";
+  if (user.role === "admin") return "You can review KYC, approve editor applications, assign roles, and manage non-protected accounts.";
+  if (user.role === "editor") return "You can verify or reject submitted stories and continue submitting verified field reports.";
+  if (user.role === "reporter" && user.reporterVerified) return "You can submit verified reporter stories and apply to join the editor desk.";
+  return "You can submit eyewitness reports and apply for reporter KYC when ready.";
+}
+
+function canAdminAssignRole(actor: PublicUser, target: PublicUser, role: UserRole, firstAdminId: string | null) {
+  const actorIsFirstAdmin = actor.id === firstAdminId;
+  const targetIsFirstAdmin = target.id === firstAdminId;
+  if (targetIsFirstAdmin && !actorIsFirstAdmin) return false;
+  if (target.role === "admin" && role !== "admin" && !actorIsFirstAdmin) return false;
+  if (role === "reporter" && target.kycStatus !== "approved") return false;
+  if (role === "editor" && !target.reporterVerified && target.role !== "admin") return false;
+  return true;
+}
+
+function canAdminChangeStatus(actor: PublicUser, target: PublicUser, firstAdminId: string | null) {
+  const actorIsFirstAdmin = actor.id === firstAdminId;
+  if (target.id === actor.id) return false;
+  if (target.id === firstAdminId && !actorIsFirstAdmin) return false;
+  if (target.role === "admin" && !actorIsFirstAdmin && target.id !== actor.id) return false;
+  return true;
 }
 
 function StatusMetric({ value, label }: { value: number; label: string }) {

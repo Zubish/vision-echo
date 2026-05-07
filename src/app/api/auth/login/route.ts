@@ -11,6 +11,9 @@ export async function POST(request: NextRequest) {
   if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
     return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
   }
+  if (user.status !== "active") {
+    return NextResponse.json({ error: "Account is not active" }, { status: 403 });
+  }
 
   await createSession(user.id);
   return NextResponse.json({ user: toPublicUser(user) });

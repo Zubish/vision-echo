@@ -53,6 +53,19 @@ export const roleUpdateSchema = z.object({
   role: z.enum(["user", "reporter", "editor", "admin"]),
 });
 
+export const statusUpdateSchema = z.object({
+  status: z.enum(["active", "suspended"]),
+});
+
+export const roleApplicationSchema = z.object({
+  note: z.string().min(20).max(1200),
+});
+
+export const roleApplicationReviewSchema = z.object({
+  status: z.enum(["approved", "rejected"]),
+  reviewerNote: z.string().max(500).optional(),
+});
+
 export const kycInputSchema = z.object({
   fullName: z.string().min(2).max(120),
   phone: z.string().min(6).max(40),

@@ -28,6 +28,17 @@ CREATE TABLE IF NOT EXISTS kyc_submissions (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS role_applications (
+  id text PRIMARY KEY,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  requested_role text NOT NULL,
+  status text NOT NULL DEFAULT 'pending',
+  note text NOT NULL,
+  reviewer_note text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS reports (
   id text PRIMARY KEY,
   title text NOT NULL,
@@ -57,4 +68,5 @@ CREATE INDEX IF NOT EXISTS reports_status_idx ON reports(status);
 CREATE INDEX IF NOT EXISTS reports_category_idx ON reports(category_slug);
 CREATE INDEX IF NOT EXISTS reports_created_idx ON reports(created_at DESC);
 CREATE INDEX IF NOT EXISTS kyc_user_idx ON kyc_submissions(user_id);
+CREATE INDEX IF NOT EXISTS role_applications_user_idx ON role_applications(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx ON users (lower(email));
