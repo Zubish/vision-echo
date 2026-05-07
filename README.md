@@ -21,7 +21,8 @@ The original static prototype is preserved in `legacy-static/`. The active produ
 - Reporter profile cards
 - Shareable report URLs
 - REST API routes for web and future mobile clients
-- Local JSON database persistence for fast MVP iteration
+- Neon/Postgres-backed production persistence through `DATABASE_URL`
+- Local JSON database persistence for fast MVP iteration when `DATABASE_URL` is not set
 - PWA manifest, service worker, icon, offline page, and mobile bottom dock
 
 ## Run Locally
@@ -32,6 +33,13 @@ npm run dev
 ```
 
 Open `http://localhost:3000`.
+
+For local Postgres testing, copy `.env.example` to `.env.local` and set:
+
+```bash
+DATABASE_URL="your-neon-or-postgres-url"
+AUTH_SECRET="a-long-random-secret"
+```
 
 Reset local seed data:
 
@@ -62,9 +70,9 @@ Then restart the dev server or refresh the app.
 
 ## Database
 
-The current MVP uses `data/visionecho-db.json`, generated automatically from `src/lib/seed.ts`. The repository also includes a production SQL starting point in `docs/schema.sql`.
+Production uses Neon/Postgres when `DATABASE_URL` is present. The app creates and migrates the required tables from `src/lib/db.ts`, and the matching SQL reference lives in `docs/schema.sql`.
 
-Recommended production move: replace `src/lib/db.ts` with a Neon Postgres, Supabase Postgres, or managed Postgres adapter while keeping the API response shapes stable.
+Without `DATABASE_URL`, local development falls back to `data/visionecho-db.json`, generated automatically from `src/lib/seed.ts`.
 
 ## Mobile Path
 
@@ -72,8 +80,6 @@ The web app is mobile responsive and PWA-ready now. The next native app step is 
 
 ## Production Gaps Before Public Launch
 
-- Hosted Postgres/Neon database wired to replace the current local JSON/in-memory adapter
-- `AUTH_SECRET` configured in Vercel environment variables
 - Signed object storage for real media uploads
 - Media malware scanning and content moderation
 - Rate limiting and abuse reporting
